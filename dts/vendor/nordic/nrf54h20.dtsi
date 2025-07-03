@@ -14,7 +14,6 @@
 #include <zephyr/dt-bindings/misc/nordic-domain-id-nrf54h20.h>
 #include <zephyr/dt-bindings/misc/nordic-owner-id-nrf54h20.h>
 #include <zephyr/dt-bindings/misc/nordic-tddconf.h>
-#include <zephyr/dt-bindings/power/nordic-nrf-gpd.h>
 
 /delete-node/ &sw_pwm;
 
@@ -171,13 +170,13 @@
 
 		fll16m: fll16m {
 			compatible = "nordic,nrf-fll16m";
-			status = "disabled";
+			clock-names = "hfxo", "lfxo";
 			#clock-cells = <0>;
 			clock-frequency = <DT_FREQ_M(16)>;
 			open-loop-accuracy-ppm = <20000>;
 			open-loop-startup-time-us = <200>; /* To be measured */
 			clocks = <&hfxo>, <&lfxo>;
-			clock-names = "hfxo", "lfxo";
+			status = "disabled";
 		};
 
 		hsfll120: hsfll120 {
@@ -246,15 +245,6 @@
 			zephyr,pm-device-runtime-auto;
 			status = "disabled";
 		};
-	};
-
-	swext: swext {
-		compatible = "nordic,nrfs-swext";
-		status = "disabled";
-		max-current-ua = <7500>;
-		current-limit-ua = <7500>;
-		zephyr,pm-device-runtime-auto;
-		#power-domain-cells = <0>;
 	};
 
 	soc {
@@ -1362,7 +1352,7 @@
 				interrupts = <452 NRF_DEFAULT_IRQ_PRIORITY>;
 				clocks = <&fll16m>;
 				#pwm-cells = <3>;
-				power-domains = <&gpd NRF_GPD_SLOW_ACTIVE>;
+				power-domains = <&gdpwr_slow_active>;
 				idleout-supported;
 			};
 
@@ -1496,7 +1486,7 @@
 				interrupts = <468 NRF_DEFAULT_IRQ_PRIORITY>;
 				clocks = <&fll16m>;
 				#pwm-cells = <3>;
-				power-domains = <&gpd NRF_GPD_SLOW_ACTIVE>;
+				power-domains = <&gdpwr_slow_active>;
 				idleout-supported;
 			};
 

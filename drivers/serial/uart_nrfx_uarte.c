@@ -118,23 +118,23 @@ LOG_MODULE_REGISTER(uart_nrfx_uarte, CONFIG_UART_LOG_LEVEL);
 #define UARTE_ANY_LOW_POWER 1
 #endif
 
-#ifdef CONFIG_SOC_NRF54H20_GPD
-#include <nrf/gpd.h>
-
-/* Macro must resolve to literal 0 or 1 */
-#define INSTANCE_IS_FAST_PD(unused, prefix, idx, _)						\
-	COND_CODE_1(DT_NODE_HAS_STATUS_OKAY(UARTE(idx)),					\
-		    (COND_CODE_1(DT_NODE_HAS_PROP(UARTE(idx), power_domains),			\
-			(IS_EQ(DT_PHA(UARTE(idx), power_domains, id), NRF_GPD_FAST_ACTIVE1)),	\
-			(0))), (0))
-
-#if UARTE_FOR_EACH_INSTANCE(INSTANCE_IS_FAST_PD, (||), (0))
-/* Instance in fast power domain (PD) requires special PM treatment and clock control, so
- * device runtime PM and clock control must be enabled.
+/* Only cores with access to GDFS can control clocks and power domains, so if a fast instance is
+ * used by other cores, treat the UART like a normal one. This presumes cores with access to GDFS
+ * have requested the clocks and power domains needed by the fast instance to be ACTIVE before
+ * other cores use the fast instance.
  */
-BUILD_ASSERT(IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME));
-BUILD_ASSERT(IS_ENABLED(CONFIG_CLOCK_CONTROL));
-#define UARTE_ANY_FAST_PD 1
+#if CONFIG_NRFS_GDFS_SERVICE_ENABLED
+#define INSTANCE_IS_FAST(unused, prefix, idx, _)						\
+	UTIL_AND(										\
+		UTIL_AND(									\
+			IS_ENABLED(CONFIG_HAS_HW_NRF_UARTE##prefix##idx),			\
+			NRF_DT_IS_FAST(UARTE(idx))						\
+		),										\
+		IS_ENABLED(CONFIG_CLOCK_CONTROL)						\
+	)
+
+#if UARTE_FOR_EACH_INSTANCE(INSTANCE_IS_FAST, (||), (0))
+#define UARTE_ANY_FAST 1
 #endif
 #endif
 
@@ -771,9 +771,7 @@ static void uarte_periph_enable(const struct device *dev)
 
 	(void)pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
 	nrf_uarte_enable(uarte);
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	nrf_gpd_retain_pins_set(config->pcfg, false);
-#endif
+
 #if UARTE_CROSS_DOMAIN_PINS_SUPPORTED
 	if (config->cross_domain && uarte_has_cross_domain_connection(config)) {
 #if UARTE_CROSS_DOMAIN_PINS_HANDLE
@@ -787,6 +785,7 @@ static void uarte_periph_enable(const struct device *dev)
 #endif
 	}
 #endif
+
 #if UARTE_BAUDRATE_RETENTION_WORKAROUND
 	nrf_uarte_baudrate_set(uarte,
 		COND_CODE_1(CONFIG_UART_USE_RUNTIME_CONFIGURE,
@@ -2467,9 +2466,6 @@ static void uarte_pm_suspend(const struct device *dev)
 		wait_for_tx_stopped(dev);
 	}
 
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	nrf_gpd_retain_pins_set(cfg->pcfg, true);
-#endif
 #if UARTE_CROSS_DOMAIN_PINS_SUPPORTED
 	if (cfg->cross_domain && uarte_has_cross_domain_connection(cfg)) {
 #if UARTE_CROSS_DOMAIN_PINS_HANDLE
@@ -2663,7 +2659,7 @@ static int uarte_instance_init(const struct device *dev,
  * which is using nrfs (IPC) are initialized later.
  */
 #define UARTE_INIT_PRIO(idx)								\
-	COND_CODE_1(INSTANCE_IS_FAST_PD(_, /*empty*/, idx, _),				\
+	COND_CODE_1(INSTANCE_IS_FAST(_, /*empty*/, idx, _),				\
 		    (UTIL_INC(CONFIG_CLOCK_CONTROL_NRF_HSFLL_GLOBAL_INIT_PRIORITY)),	\
 		    (CONFIG_SERIAL_INIT_PRIORITY))
 

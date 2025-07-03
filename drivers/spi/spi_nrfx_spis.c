@@ -430,11 +430,6 @@ static void spi_nrfx_suspend(const struct device *dev)
 		nrf_spis_disable(dev_config->spis.p_reg);
 	}
 
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	if (dev_config->gpd_ctrl) {
-		nrf_gpd_retain_pins_set(dev_config->pcfg, true);
-	}
-#endif
 #if SPIS_CROSS_DOMAIN_SUPPORTED
 	if (dev_config->cross_domain && spis_has_cross_domain_connection(dev_config)) {
 #if SPIS_CROSS_DOMAIN_PINS_HANDLE
@@ -458,11 +453,6 @@ static void spi_nrfx_resume(const struct device *dev)
 
 	(void)pinctrl_apply_state(dev_config->pcfg, PINCTRL_STATE_DEFAULT);
 
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	if (dev_config->gpd_ctrl) {
-		nrf_gpd_retain_pins_set(dev_config->pcfg, false);
-	}
-#endif
 #if SPIS_CROSS_DOMAIN_SUPPORTED
 	if (dev_config->cross_domain && spis_has_cross_domain_connection(dev_config)) {
 #if SPIS_CROSS_DOMAIN_PINS_HANDLE
@@ -605,7 +595,7 @@ static int spi_nrfx_init(const struct device *dev)
 		     !(DT_GPIO_FLAGS(SPIS(idx), wake_gpios) & GPIO_ACTIVE_LOW),\
 		     "WAKE line must be configured as active high");	       \
 	PM_DEVICE_DT_DEFINE(SPIS(idx), spi_nrfx_pm_action,		       \
-		COND_CODE_1(SPIS_IS_FAST(idx), (0),			       \
+		COND_CODE_1(NRF_DT_IS_FAST(SPIS(idx)), (0),		       \
 			    (PM_DEVICE_ISR_SAFE)));			       \
 	SPI_DEVICE_DT_DEFINE(SPIS(idx),					       \
 			    spi_nrfx_init,				       \

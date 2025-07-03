@@ -35,8 +35,8 @@ struct gpio_nrfx_cfg {
 	uint32_t edge_sense;
 	uint8_t port_num;
 	nrfx_gpiote_t gpiote;
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	uint8_t pad_pd;
+#if GPIO_HAS_PAD_GROUP
+	const struct device *pad_group;
 #endif
 };
 
@@ -64,30 +64,6 @@ static nrf_gpio_pin_pull_t get_pull(gpio_flags_t flags)
 	}
 
 	return NRF_GPIO_PIN_NOPULL;
-}
-
-static void gpio_nrfx_gpd_retain_set(const struct device *port, uint32_t mask)
-{
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	const struct gpio_nrfx_cfg *cfg = get_port_cfg(port);
-
-	nrf_gpio_port_retain_enable(cfg->port, mask);
-#else
-	ARG_UNUSED(port);
-	ARG_UNUSED(mask);
-#endif
-}
-
-static void gpio_nrfx_gpd_retain_clear(const struct device *port, uint32_t mask)
-{
-#ifdef CONFIG_SOC_NRF54H20_GPD
-	const struct gpio_nrfx_cfg *cfg = get_port_cfg(port);
-
-	nrf_gpio_port_retain_disable(cfg->port, mask);
-#else
-	ARG_UNUSED(port);
-	ARG_UNUSED(mask);
-#endif
 }
 
 static int gpio_nrfx_pin_configure(const struct device *port, gpio_pin_t pin,
@@ -217,7 +193,6 @@ static int gpio_nrfx_pin_configure(const struct device *port, gpio_pin_t pin,
 	}
 
 end:
-	gpio_nrfx_gpd_retain_set(port, BIT(pin));
 	return pm_device_runtime_put(port);
 }
 
@@ -320,7 +295,6 @@ static int gpio_nrfx_port_set_masked_raw(const struct device *port,
 
 	nrf_gpio_port_out_set(reg, set_mask);
 	nrf_gpio_port_out_clear(reg, clear_mask);
-	gpio_nrfx_gpd_retain_set(port, mask);
 	return pm_device_runtime_put(port);
 }
 
@@ -336,7 +310,6 @@ static int gpio_nrfx_port_set_bits_raw(const struct device *port,
 	}
 
 	nrf_gpio_port_out_set(reg, mask);
-	gpio_nrfx_gpd_retain_set(port, mask);
 	return pm_device_runtime_put(port);
 }
 
@@ -352,7 +325,6 @@ static int gpio_nrfx_port_clear_bits_raw(const struct device *port,
 	}
 
 	nrf_gpio_port_out_clear(reg, mask);
-	gpio_nrfx_gpd_retain_set(port, mask);
 	return pm_device_runtime_put(port);
 }
 
@@ -372,7 +344,6 @@ static int gpio_nrfx_port_toggle_bits(const struct device *port,
 
 	nrf_gpio_port_out_set(reg, set_mask);
 	nrf_gpio_port_out_clear(reg, clear_mask);
-	gpio_nrfx_gpd_retain_set(port, mask);
 	return pm_device_runtime_put(port);
 }
 
@@ -667,7 +638,7 @@ static DEVICE_API(gpio, gpio_nrfx_drv_api_funcs) = {
 		.port_num = DT_INST_PROP(id, port),			\
 		.edge_sense = DT_INST_PROP_OR(id, sense_edge_mask, 0),	\
 		.gpiote = GPIOTE_INSTANCE(id),				\
-		PAD_PD(id)						\
+		GPIO_NRF_PAD_GROUP_INIT(id)				\
 	};								\
 									\
 	static struct gpio_nrfx_data gpio_nrfx_p##id##_data;		\
