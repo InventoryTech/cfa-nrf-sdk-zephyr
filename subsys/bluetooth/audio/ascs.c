@@ -1490,8 +1490,9 @@ static void ascs_cp_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 	LOG_DBG("attr %p value 0x%04x", attr, value);
 }
 
-static int ascs_ep_set_codec(struct bt_bap_ep *ep, uint8_t id, uint16_t cid, uint16_t vid,
-			     const uint8_t *cc, uint8_t len, struct bt_bap_ascs_rsp *rsp)
+static int ascs_ep_set_codec(struct bt_bap_ep *ep, uint8_t target_latency, uint8_t target_phy,
+			     uint8_t id, uint16_t cid, uint16_t vid, const uint8_t *cc, uint8_t len,
+			     struct bt_bap_ascs_rsp *rsp)
 {
 	const struct bt_audio_codec_cap *codec_cap;
 	struct bt_audio_codec_cfg *codec_cfg;
@@ -1591,9 +1592,9 @@ static int ase_config(struct bt_ascs_ase *ase, const struct bt_ascs_config *cfg)
 	 */
 	(void)memcpy(&codec_cfg, &ase->ep.codec_cfg, sizeof(codec_cfg));
 
-	err = ascs_ep_set_codec(&ase->ep, cfg->codec.id, sys_le16_to_cpu(cfg->codec.cid),
-				sys_le16_to_cpu(cfg->codec.vid), (const uint8_t *)cfg->cc,
-				cfg->cc_len, &rsp);
+	err = ascs_ep_set_codec(&ase->ep, cfg->latency, cfg->phy, cfg->codec.id,
+				sys_le16_to_cpu(cfg->codec.cid), sys_le16_to_cpu(cfg->codec.vid),
+				(const uint8_t *)cfg->cc, cfg->cc_len, &rsp);
 	if (err != 0) {
 		ascs_app_rsp_warn_valid(&rsp);
 		(void)memcpy(&ase->ep.codec_cfg, &codec_cfg, sizeof(codec_cfg));
