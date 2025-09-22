@@ -118,23 +118,22 @@ LOG_MODULE_REGISTER(uart_nrfx_uarte, CONFIG_UART_LOG_LEVEL);
 #define UARTE_ANY_LOW_POWER 1
 #endif
 
-/* Only cores with access to GDFS can control clocks and power domains, so if a fast instance is
- * used by other cores, treat the UART like a normal one. This presumes cores with access to GDFS
- * have requested the clocks and power domains needed by the fast instance to be ACTIVE before
- * other cores use the fast instance.
- */
-#if CONFIG_NRFS_GDFS_SERVICE_ENABLED
-#define INSTANCE_IS_FAST(unused, prefix, idx, _)						\
-	UTIL_AND(										\
-		UTIL_AND(									\
-			IS_ENABLED(CONFIG_HAS_HW_NRF_UARTE##prefix##idx),			\
-			NRF_DT_IS_FAST(UARTE(idx))						\
-		),										\
-		IS_ENABLED(CONFIG_CLOCK_CONTROL)						\
-	)
+#ifdef CONFIG_SOC_NRF54H20_GPD
+#include <nrf/gpd.h>
 
-#if UARTE_FOR_EACH_INSTANCE(INSTANCE_IS_FAST, (||), (0))
-#define UARTE_ANY_FAST 1
+/* Macro must resolve to literal 0 or 1 */
+#define INSTANCE_IS_FAST_PD(unused, prefix, idx, _)						\
+	COND_CODE_1(DT_NODE_HAS_STATUS_OKAY(UARTE(idx)),					\
+		    (COND_CODE_1(DT_NODE_HAS_PROP(UARTE(idx), power_domains),			\
+			(IS_EQ(DT_PHA(UARTE(idx), power_domains, id), NRF_GPD_FAST_ACTIVE1)),	\
+			(0))), (0))
+
+#if UARTE_FOR_EACH_INSTANCE(INSTANCE_IS_FAST_PD, (||), (0))
+/* Instance in fast power domain (PD) requires special PM treatment so device runtime PM must
+ * be enabled.
+ */
+BUILD_ASSERT(IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME));
+#define UARTE_ANY_FAST_PD 1
 #endif
 #endif
 
