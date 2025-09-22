@@ -469,8 +469,8 @@ static DEVICE_API(counter, counter_nrfx_driver_api) = {
  * which is using nrfs (IPC) are initialized later.
  */
 #define TIMER_INIT_PRIO(idx)								\
-	COND_CODE_1(COUNTER_IS_FAST(idx),						\
-		    (UTIL_INC(CONFIG_CLOCK_CONTROL_NRF_HSFLL_GLOBAL_INIT_PRIORITY)),	\
+	COND_CODE_1(INSTANCE_IS_FAST(idx),						\
+		    (UTIL_INC(CONFIG_CLOCK_CONTROL_NRF2_GLOBAL_HSFLL_INIT_PRIORITY)),	\
 		    (CONFIG_COUNTER_INIT_PRIORITY))
 
 /*
