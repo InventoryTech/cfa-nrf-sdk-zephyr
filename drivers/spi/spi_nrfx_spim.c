@@ -43,37 +43,12 @@ LOG_MODULE_REGISTER(spi_nrfx_spim, CONFIG_SPI_LOG_LEVEL);
 #define SPI_BUFFER_IN_RAM 1
 #endif
 
-/*
- * We use NODELABEL here because the nrfx API requires us to call
- * functions which are named according to SoC peripheral instance
- * being operated on. Since DT_INST() makes no guarantees about that,
- * it won't work.
- */
-#define SPIM(idx)			DT_NODELABEL(spi##idx)
-#define SPIM_PROP(idx, prop)		DT_PROP(SPIM(idx), prop)
-#define SPIM_HAS_PROP(idx, prop)	DT_NODE_HAS_PROP(SPIM(idx), prop)
-
-/* Execute macro f(x) for all instances. */
-#define SPIM_FOR_EACH_INSTANCE(f, sep, off_code, ...) \
-	NRFX_FOREACH_PRESENT(SPIM, f, sep, off_code, __VA_ARGS__)
-
-/* Only CPUAPP and CPURAD can control clocks and power domains, so if a fast instance is
- * used by other cores, treat the SPIM like a normal one. This presumes the CPUAPP or CPURAD
- * have requested the clocks and power domains needed by the fast instance to be ACTIVE before
- * other cores use the fast instance.
- */
-#if CONFIG_SOC_NRF54H20_CPUAPP || CONFIG_SOC_NRF54H20_CPURAD
-#define INSTANCE_IS_FAST(unused, prefix, idx, _)						\
-	UTIL_AND(										\
-		UTIL_AND(									\
-			IS_ENABLED(CONFIG_HAS_HW_NRF_SPIM##prefix##idx),			\
-			NRF_DT_IS_FAST(SPIM(idx))						\
-		),										\
-		IS_ENABLED(CONFIG_CLOCK_CONTROL)						\
-	)
-
-#if SPIM_FOR_EACH_INSTANCE(INSTANCE_IS_FAST, (||), (0))
-#define SPIM_ANY_FAST 1
+#if defined(CONFIG_CLOCK_CONTROL_NRF_HSFLL_GLOBAL)
+#define SPIM_REQUESTS_CLOCK(node) \
+	DT_NODE_HAS_COMPAT(DT_CLOCKS_CTLR(node), nordic_nrf_hsfll_global)
+#define SPIM_REQUESTS_CLOCK_OR(node) SPIM_REQUESTS_CLOCK(node) ||
+#if (DT_FOREACH_STATUS_OKAY(nordic_nrf_spim, SPIM_REQUESTS_CLOCK_OR) 0)
+#define USE_CLOCK_REQUESTS 1
 /* If fast instances are used then system managed device PM cannot be used because
  * it may call PM actions from locked context and fast SPIM PM actions can only be
  * called from a thread context.
@@ -81,28 +56,6 @@ LOG_MODULE_REGISTER(spi_nrfx_spim, CONFIG_SPI_LOG_LEVEL);
 BUILD_ASSERT(!IS_ENABLED(CONFIG_PM_DEVICE_SYSTEM_MANAGED));
 #endif
 #endif
-
-#define SPIM_PINS_CROSS_DOMAIN(unused, prefix, idx, _)			\
-	COND_CODE_1(DT_NODE_HAS_STATUS_OKAY(SPIM(prefix##idx)),		\
-		   (SPIM_PROP(idx, cross_domain_pins_supported)),	\
-		   (0))
-
-#if NRFX_FOREACH_PRESENT(SPIM, SPIM_PINS_CROSS_DOMAIN, (||), (0))
-#include <hal/nrf_gpio.h>
-/* Certain SPIM instances support usage of cross domain pins in form of dedicated pins on
- * a port different from the default one.
- */
-#define SPIM_CROSS_DOMAIN_SUPPORTED 1
-#endif
-
-#if SPIM_CROSS_DOMAIN_SUPPORTED && defined(CONFIG_NRF_SYS_EVENT)
-#include <nrf_sys_event.h>
-/* To use cross domain pins, constant latency mode needs to be applied, which is
- * handled via nrf_sys_event requests.
- */
-#define SPIM_CROSS_DOMAIN_PINS_HANDLE 1
-#endif
-
 
 struct spi_nrfx_data {
 	struct spi_context ctx;
@@ -142,10 +95,6 @@ struct spi_nrfx_config {
 #ifdef USE_CLOCK_REQUESTS
 	const struct device *clk_dev;
 	struct nrf_clock_spec clk_spec;
-#endif
-#if SPIM_CROSS_DOMAIN_SUPPORTED
-	bool cross_domain;
-	int8_t default_port;
 #endif
 };
 
@@ -195,32 +144,6 @@ static inline void release_clock(const struct device *dev)
 	ARG_UNUSED(dev);
 #endif
 }
-
-#if SPIM_CROSS_DOMAIN_SUPPORTED
-static bool spim_has_cross_domain_connection(const struct spi_nrfx_config *config)
-{
-	const struct pinctrl_dev_config *pcfg = config->pcfg;
-	const struct pinctrl_state *state;
-	int ret;
-
-	ret = pinctrl_lookup_state(pcfg, PINCTRL_STATE_DEFAULT, &state);
-	if (ret < 0) {
-		LOG_ERR("Unable to read pin state");
-		return false;
-	}
-
-	for (uint8_t i = 0U; i < state->pin_cnt; i++) {
-		uint32_t pin = NRF_GET_PIN(state->pins[i]);
-
-		if ((pin != NRF_PIN_DISCONNECTED) &&
-		    (nrf_gpio_pin_port_number_extract(&pin) != config->default_port)) {
-			return true;
-		}
-	}
-
-	return false;
-}
-#endif
 
 static inline void finalize_spi_transaction(const struct device *dev, bool deactivate_cs)
 {
@@ -760,18 +683,8 @@ static int spim_resume(const struct device *dev)
 		return -EAGAIN;
 	}
 
-#if SPIM_CROSS_DOMAIN_SUPPORTED
-	if (dev_config->cross_domain && spim_has_cross_domain_connection(dev_config)) {
-#if SPIM_CROSS_DOMAIN_PINS_HANDLE
-		int err;
-
-		err = nrf_sys_event_request_global_constlat();
-		(void)err;
-		__ASSERT_NO_MSG(err >= 0);
-#else
-		__ASSERT(false, "NRF_SYS_EVENT needs to be enabled to use cross domain pins.\n");
-#endif
-	}
+#ifdef CONFIG_SOC_NRF54H20_GPD
+	nrf_gpd_retain_pins_set(dev_config->pcfg, false);
 #endif
 
 	return IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME) ? request_clock(dev) : 0;
@@ -793,18 +706,8 @@ static void spim_suspend(const struct device *dev)
 
 	spi_context_cs_put_all(&dev_data->ctx);
 
-#if SPIM_CROSS_DOMAIN_SUPPORTED
-	if (dev_config->cross_domain && spim_has_cross_domain_connection(dev_config)) {
-#if SPIM_CROSS_DOMAIN_PINS_HANDLE
-		int err;
-
-		err = nrf_sys_event_request_global_constlat();
-		(void)err;
-		__ASSERT_NO_MSG(err >= 0);
-#else
-		__ASSERT(false, "NRF_SYS_EVENT needs to be enabled to use cross domain pins.\n");
-#endif
-	}
+#ifdef CONFIG_SOC_NRF54H20_GPD
+	nrf_gpd_retain_pins_set(dev_config->pcfg, true);
 #endif
 
 	(void)pinctrl_apply_state(dev_config->pcfg, PINCTRL_STATE_SLEEP);
@@ -885,6 +788,15 @@ static int spi_nrfx_deinit(const struct device *dev)
 	return 0;
 }
 
+/*
+ * We use NODELABEL here because the nrfx API requires us to call
+ * functions which are named according to SoC peripheral instance
+ * being operated on. Since DT_INST() makes no guarantees about that,
+ * it won't work.
+ */
+#define SPIM(idx)			DT_NODELABEL(spi##idx)
+#define SPIM_PROP(idx, prop)		DT_PROP(SPIM(idx), prop)
+#define SPIM_HAS_PROP(idx, prop)	DT_NODE_HAS_PROP(SPIM(idx), prop)
 #define SPIM_MEM_REGION(idx)		DT_PHANDLE(SPIM(idx), memory_regions)
 
 #define SPI_NRFX_SPIM_EXTENDED_CONFIG(idx)				\
@@ -971,11 +883,6 @@ static int spi_nrfx_deinit(const struct device *dev)
 				 .clk_spec = {					       \
 				.frequency = NRF_CLOCK_CONTROL_FREQUENCY_MAX,  \
 			 },))						       \
-		IF_ENABLED(SPIM_PINS_CROSS_DOMAIN(_, /*empty*/, idx, _),       \
-			(.cross_domain = true,				       \
-			 .default_port =				       \
-				DT_PROP_OR(DT_PHANDLE(SPIM(idx),	       \
-					default_gpio_port), port, -1),))       \
 	};								       \
 	BUILD_ASSERT(!SPIM_HAS_PROP(idx, wake_gpios) ||			       \
 		     !(DT_GPIO_FLAGS(SPIM(idx), wake_gpios) & GPIO_ACTIVE_LOW),\
