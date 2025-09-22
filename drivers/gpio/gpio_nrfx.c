@@ -66,6 +66,39 @@ static nrf_gpio_pin_pull_t get_pull(gpio_flags_t flags)
 	return NRF_GPIO_PIN_NOPULL;
 }
 
+static void gpio_nrfx_gpd_retain_set(const struct device *port, uint32_t mask, gpio_flags_t flags)
+{
+#ifdef CONFIG_SOC_NRF54H20_GPD
+	const struct gpio_nrfx_cfg *cfg = get_port_cfg(port);
+
+	if (cfg->pad_pd != NRF_GPD_FAST_ACTIVE1 || !(flags & GPIO_OUTPUT)) {
+		return;
+	}
+
+	nrf_gpio_port_retain_enable(cfg->port, mask);
+#else
+	ARG_UNUSED(port);
+	ARG_UNUSED(mask);
+	ARG_UNUSED(flags);
+#endif
+}
+
+static void gpio_nrfx_gpd_retain_clear(const struct device *port, uint32_t mask)
+{
+#ifdef CONFIG_SOC_NRF54H20_GPD
+	const struct gpio_nrfx_cfg *cfg = get_port_cfg(port);
+
+	if (cfg->pad_pd != NRF_GPD_FAST_ACTIVE1) {
+		return;
+	}
+
+	nrf_gpio_port_retain_disable(cfg->port, mask);
+#else
+	ARG_UNUSED(port);
+	ARG_UNUSED(mask);
+#endif
+}
+
 static int gpio_nrfx_pin_configure(const struct device *port, gpio_pin_t pin,
 				   gpio_flags_t flags)
 {
@@ -193,7 +226,7 @@ static int gpio_nrfx_pin_configure(const struct device *port, gpio_pin_t pin,
 	}
 
 end:
-	gpio_nrfx_gpd_retain_set(port, BIT(pin));
+	gpio_nrfx_gpd_retain_set(port, BIT(pin), flags);
 	return pm_device_runtime_put(port);
 }
 
@@ -296,6 +329,7 @@ static int gpio_nrfx_port_set_masked_raw(const struct device *port,
 
 	nrf_gpio_port_out_set(reg, set_mask);
 	nrf_gpio_port_out_clear(reg, clear_mask);
+	gpio_nrfx_gpd_retain_set(port, mask, GPIO_OUTPUT);
 	return pm_device_runtime_put(port);
 }
 
@@ -311,6 +345,7 @@ static int gpio_nrfx_port_set_bits_raw(const struct device *port,
 	}
 
 	nrf_gpio_port_out_set(reg, mask);
+	gpio_nrfx_gpd_retain_set(port, mask, GPIO_OUTPUT);
 	return pm_device_runtime_put(port);
 }
 
@@ -326,6 +361,7 @@ static int gpio_nrfx_port_clear_bits_raw(const struct device *port,
 	}
 
 	nrf_gpio_port_out_clear(reg, mask);
+	gpio_nrfx_gpd_retain_set(port, mask, GPIO_OUTPUT);
 	return pm_device_runtime_put(port);
 }
 
@@ -345,6 +381,7 @@ static int gpio_nrfx_port_toggle_bits(const struct device *port,
 
 	nrf_gpio_port_out_set(reg, set_mask);
 	nrf_gpio_port_out_clear(reg, clear_mask);
+	gpio_nrfx_gpd_retain_set(port, mask, GPIO_OUTPUT);
 	return pm_device_runtime_put(port);
 }
 
