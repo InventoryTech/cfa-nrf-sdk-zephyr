@@ -467,8 +467,21 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt,
 		if (psel != PSEL_DISCONNECTED) {
 			uint32_t pin = psel;
 
-			/* enable pin */
-			pad_group_request_pin(pin);
+#ifdef CONFIG_SOC_NRF54H20_GPD
+			if (NRF_GET_GPD_FAST_ACTIVE1(pins[i]) == 1U) {
+				if (!gpd_requested) {
+					int ret;
+
+					ret = nrf_gpd_request(NRF_GPD_SLOW_ACTIVE);
+					if (ret < 0) {
+						return ret;
+					}
+					gpd_requested = true;
+				}
+
+				nrf_gpio_pin_retain_disable(pin);
+			}
+#endif /* CONFIG_SOC_NRF54H20_GPD */
 
 			if (write != NO_WRITE) {
 				nrf_gpio_pin_write(pin, write);
@@ -483,14 +496,12 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt,
 			/* configure pin */
 			nrf_gpio_cfg(pin, dir, input, NRF_GET_PULL(pins[i]),
 				     drive, NRF_GPIO_PIN_NOSENSE);
-
-			if (NRF_GET_LP(pins[i]) == NRF_LP_ENABLE) {
-				/* disable pin and pin clock */
-				pad_group_release_pin(pin);
-				port_pin_clock_set(pin, false);
-			} else {
-				/* configure pin clock */
-				port_pin_clock_set(pin, NRF_GET_CLOCKPIN_ENABLE(pins[i]));
+#if NRF_GPIO_HAS_CLOCKPIN
+			nrf_gpio_pin_clock_set(pin, NRF_GET_CLOCKPIN_ENABLE(pins[i]));
+#endif
+#ifdef CONFIG_SOC_NRF54H20_GPD
+			if (NRF_GET_GPD_FAST_ACTIVE1(pins[i]) == 1U) {
+				nrf_gpio_pin_retain_enable(pin);
 			}
 		}
 	}
