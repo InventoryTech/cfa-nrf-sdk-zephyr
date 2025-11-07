@@ -1124,9 +1124,10 @@ static void modem_cmux_on_dlci_frame_uih(struct modem_cmux_dlci *dlci)
 		LOG_WRN("DLCI %u receive buffer overrun (dropped %u out of %u bytes)",
 			dlci->dlci_address, cmux->frame.data_len - written, cmux->frame.data_len);
 	}
+	uint32_t tmp = 0;
 	if (written < cmux->frame.data_len ||
-	    ring_buf_space_get(&dlci->receive_rb) < MODEM_CMUX_DATA_FRAME_SIZE_MAX) {
-		LOG_WRN("DLCI %u receive buffer is full", dlci->dlci_address);
+	    (tmp = ring_buf_space_get(&dlci->receive_rb)) < MODEM_CMUX_DATA_FRAME_SIZE_MAX) {	// TODO: set a different threhold if we have a large extra buffer size? don't just wait for the whole large buffer to fill up?
+//		LOG_WRN("DLCI %u receive buffer is full (space is %u, frame max is %u)", dlci->dlci_address, tmp, MODEM_CMUX_DATA_FRAME_SIZE_MAX);
 		dlci->rx_full = true;
 		modem_cmux_send_msc(cmux, dlci);
 	}
@@ -1249,7 +1250,7 @@ static void modem_cmux_drop_frame(struct modem_cmux *cmux)
 #endif
 }
 
-static void modem_cmux_process_received_byte(struct modem_cmux *cmux, uint8_t byte)
+static void modem_cmux_process_received_byte(struct modem_cmux *cmux, uint8_t byte) // TODO: ensure this is inlined for performance reasons?
 {
 	uint8_t fcs;
 
