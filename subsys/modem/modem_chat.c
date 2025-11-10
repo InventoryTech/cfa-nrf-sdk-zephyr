@@ -27,7 +27,7 @@ const struct modem_chat_script_chat modem_chat_empty_script_chats[0];
 
 #define MODEM_CHAT_SCRIPT_STATE_RUNNING_BIT (0)
 
-#if defined(CONFIG_LOG) && (CONFIG_MODEM_MODULES_LOG_LEVEL == LOG_LEVEL_DBG)
+#if defined(CONFIG_LOG) && (CONFIG_MODEM_MODULES_LOG_LEVEL <= LOG_LEVEL_INF)
 
 static char log_buffer[CONFIG_MODEM_CHAT_LOG_BUFFER_SIZE];
 
@@ -63,6 +63,7 @@ static void modem_chat_log_received_command(struct modem_chat *chat)
 
 static void modem_chat_log_received_command(struct modem_chat *chat)
 {
+
 }
 
 #endif
@@ -296,6 +297,7 @@ static bool modem_chat_send_script_request_part(struct modem_chat *chat)
 	}
 
 	request_part_size = request_size - chat->script_send_pos;
+	LOG_INF("chat send: %s", request_part);
 	ret = modem_pipe_transmit(chat->pipe, request_part, request_part_size);
 	if (ret < 1) {
 		if (ret < 0) {
@@ -513,6 +515,7 @@ static void modem_chat_on_command_received_abort(struct modem_chat *chat)
 
 static void modem_chat_on_command_received_resp(struct modem_chat *chat)
 {
+
 	/* Callback */
 	if (chat->parse_match->callback != NULL) {
 		chat->parse_match->callback(chat, (char **)chat->argv, chat->argc, chat->user_data);
