@@ -1530,7 +1530,7 @@ static void modem_cellular_carrier_on_event_handler(struct modem_cellular_data *
 		break;
 
 	case MODEM_CELLULAR_EVENT_TIMEOUT:
-		modem_chat_run_script_async(&data->chat, config->periodic_chat_script);
+		modem_chat_run_script_async(&data->chat, config->periodic_chat_script);	// start the periodic script agaion
 		break;
 
 	case MODEM_CELLULAR_EVENT_DEREGISTERED:
@@ -2639,7 +2639,7 @@ MODEM_CHAT_SCRIPT_CMDS_DEFINE(quectel_eg800q_init_chat_script_cmds,
 	MODEM_CHAT_SCRIPT_CMD_RESP("AT+CIMI", cimi_match),
 	MODEM_CHAT_SCRIPT_CMD_RESP("", ok_match),
 #if 1
-	MODEM_CHAT_SCRIPT_CMD_RESP("AT+CMUX=0,0", ok_match)
+	MODEM_CHAT_SCRIPT_CMD_RESP("AT+CMUX=0,0,8,127", ok_match)
 #else 	
 	MODEM_CHAT_SCRIPT_CMD_RESP("AT+CMUX=0,0,8,127", ok_match)		// NOTE: smaller cmux size may be better for latency when multiplexing many channels, but we currently use 1 for ppp (most of the data) and once for AT commands (signal checks)
 																	// TODO: set the baud rate enum to match CONFIG_MODEM_CELLULAR_NEW_BAUDRATE to get max buffer size?
@@ -3269,7 +3269,7 @@ MODEM_CHAT_SCRIPT_DEFINE(sqn_gm02s_periodic_chat_script,
 						  (user_pipe_1, 4))                                \
                                                                                                    \
 	MODEM_CELLULAR_DEFINE_INSTANCE(inst, 1500, 500, 15000, 5000, false,                        \
-				       NULL, /*&quectel_eg800q_set_baudrate_chat_script, */                                                      \
+				       &quectel_eg800q_set_baudrate_chat_script,                                                \
 				       &quectel_eg800q_init_chat_script,                           \
 				       &quectel_eg800q_dial_chat_script,                           \
 				       &quectel_eg800q_periodic_chat_script, NULL)

@@ -1125,8 +1125,12 @@ static void modem_cmux_on_dlci_frame_uih(struct modem_cmux_dlci *dlci)
 			dlci->dlci_address, cmux->frame.data_len - written, cmux->frame.data_len);
 	}
 	uint32_t tmp = 0;
+
+#define BUFFERS_PER_EXTRA (CONFIG_MODEM_CMUX_WORK_BUFFER_SIZE_EXTRA / MODEM_CMUX_DATA_FRAME_SIZE_MAX)
+#define MIN_SPACE	((BUFFERS_PER_EXTRA / 3) ? (BUFFERS_PER_EXTRA / 3) : 1)
+
 	if (written < cmux->frame.data_len ||
-	    (tmp = ring_buf_space_get(&dlci->receive_rb)) < MODEM_CMUX_DATA_FRAME_SIZE_MAX) {	// TODO: set a different threhold if we have a large extra buffer size? don't just wait for the whole large buffer to fill up?
+	    (tmp = ring_buf_space_get(&dlci->receive_rb)) < MIN_SPACE) {	// TODO: set a different threhold if we have a large extra buffer size? don't just wait for the whole large buffer to fill up?
 //		LOG_WRN("DLCI %u receive buffer is full (space is %u, frame max is %u)", dlci->dlci_address, tmp, MODEM_CMUX_DATA_FRAME_SIZE_MAX);
 		dlci->rx_full = true;
 		modem_cmux_send_msc(cmux, dlci);
@@ -1340,7 +1344,7 @@ static void modem_cmux_process_received_byte(struct modem_cmux *cmux, uint8_t by
 		}
 
 		if (cmux->frame.data_len > CONFIG_MODEM_CMUX_MTU) {
-			LOG_ERR("Too large frame");
+			LOG_ERR("Too large frame: %u > %u", cmux->frame.data_len, CONFIG_MODEM_CMUX_MTU);
 			modem_cmux_drop_frame(cmux);
 			break;
 		}
@@ -1365,7 +1369,7 @@ static void modem_cmux_process_received_byte(struct modem_cmux *cmux, uint8_t by
 		cmux->frame.data_len |= ((uint16_t)byte) << 7;
 
 		if (cmux->frame.data_len > CONFIG_MODEM_CMUX_MTU) {
-			LOG_ERR("Too large frame");
+			LOG_ERR("Too large frame: %u > %u", cmux->frame.data_len, CONFIG_MODEM_CMUX_MTU);
 			modem_cmux_drop_frame(cmux);
 			break;
 		}
